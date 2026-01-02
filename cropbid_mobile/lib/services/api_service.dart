@@ -196,4 +196,123 @@ class ApiService {
       return [];
     }
   }
+
+  // 4. Get User Profile
+  static Future<Map<String, dynamic>> getProfile(int userId) async {
+    final url = Uri.parse('$baseUrl/update_profile/?user_id=$userId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return {"success": true, "data": jsonDecode(response.body)};
+      } else {
+        return {"success": false, "message": "Failed to load profile"};
+      }
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
+  }
+
+  // --- CHAT FUNCTIONS ---
+
+  // 1. Get Chat History
+  static Future<List<dynamic>> getMessages(int userId, int otherId) async {
+    final url = Uri.parse('$baseUrl/communication/chat/?user_id=$userId&other_id=$otherId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return [];
+      }
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 2. Send a Message
+  static Future<bool> sendMessage(int senderId, int receiverId, String message) async {
+    final url = Uri.parse('$baseUrl/communication/chat/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'sender': senderId,
+          'receiver': receiverId,
+          'message': message,
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 3. Get Inbox (List of Conversations)
+  static Future<List<dynamic>> getInbox(int userId) async {
+    final url = Uri.parse('$baseUrl/communication/inbox/?user_id=$userId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        // The API returns a Map of values, we need a List
+        // If the backend returns `conversations.values()`, it is already a list.
+        return List<dynamic>.from(jsonDecode(response.body));
+      } else {
+        return [];
+      }
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // --- BIDDING FUNCTIONS ---
+
+  // 1. Place a Bid (Buyer)
+  static Future<bool> placeBid(int userId, int cropId, String amount) async {
+    final url = Uri.parse('$baseUrl/market/bid/place/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'crop_id': cropId,
+          'amount': amount,
+        }),
+      );
+      return response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // 2. Get Bids for a Crop (For Farmer)
+  static Future<List<dynamic>> getBidsForCrop(int cropId) async {
+    final url = Uri.parse('$baseUrl/market/bid/list/$cropId/');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return [];
+      }
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 3. Update Bid Status (Accept/Reject)
+  static Future<bool> updateBidStatus(int bidId, String action) async {
+    final url = Uri.parse('$baseUrl/market/bid/update/$bidId/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'action': action}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }
