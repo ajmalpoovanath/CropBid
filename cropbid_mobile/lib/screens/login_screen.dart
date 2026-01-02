@@ -129,14 +129,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              // 🛠️ CHANGED: Removed 'const' and passed userId
                               builder: (context) => FarmerDashboard(userId: data['id']),
                             ),
                           );
                         } else if (role == 'BUYER') {
                           Navigator.pushReplacement(
                             context,
-                            MaterialPageRoute(builder: (context) => const BuyerDashboard()),
+                            MaterialPageRoute(
+                                // 🛠️ CHANGED: Pass userId to BuyerDashboard too!
+                                builder: (context) => BuyerDashboard(userId: data['id']) 
+                            ),
                           );
                         }
                       }
