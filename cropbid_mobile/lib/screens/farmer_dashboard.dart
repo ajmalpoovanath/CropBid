@@ -4,7 +4,8 @@ import 'login_screen.dart';
 import 'add_crop_screen.dart';
 import 'profile_screen.dart'; 
 import 'inbox_screen.dart'; 
-import 'view_bids_screen.dart'; // <--- IMPORT VIEW BIDS SCREEN
+import 'view_bids_screen.dart'; 
+import 'orders_screen.dart'; 
 
 class FarmerDashboard extends StatefulWidget {
   final int? userId; 
@@ -16,11 +17,9 @@ class FarmerDashboard extends StatefulWidget {
 }
 
 class _FarmerDashboardState extends State<FarmerDashboard> {
-  // 1. Track the active tab 
-  // 0 = Home, 1 = Inbox, 2 = Profile
+  // 0 = Home, 1 = Chats, 2 = Orders, 3 = Profile
   int _selectedIndex = 0;
   
-  // Data for the Home Tab
   List<dynamic> _crops = [];
   bool _isLoadingCrops = true;
 
@@ -41,7 +40,6 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
     }
   }
 
-  // 2. Handle Tab Switching
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -50,82 +48,161 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // 3. Define the Views
     final List<Widget> _pages = [
       // TAB 0: THE CROP LIST (Home)
       _isLoadingCrops 
           ? const Center(child: CircularProgressIndicator()) 
-          : _crops.isEmpty 
-              ? const Center(child: Text("No crops listed yet. Click + to add.")) 
-              : ListView.builder(
-                  itemCount: _crops.length,
-                  itemBuilder: (context, index) {
-                    final crop = _crops[index];
-                    return Card(
-                      margin: const EdgeInsets.all(10),
-                      elevation: 3,
-                      child: Column(
-                        children: [
-                          // 1. Existing Crop Details
-                          ListTile(
-                            leading: crop['image'] != null 
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      "http://127.0.0.1:8000${crop['image']}", 
-                                      width: 50, 
-                                      height: 50, 
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported),
-                                    ),
-                                  )
-                                : const Icon(Icons.agriculture, size: 40, color: Colors.green),
-                            title: Text(crop['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text("Qty: ${crop['quantity']} kg"),
-                            trailing: Text("₹${crop['base_price']}", style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
-                          ),
+          : RefreshIndicator(
+              onRefresh: _loadCrops,
+              child: _crops.isEmpty 
+                ? const Center(child: Text("No crops listed yet. Click + to add.")) 
+                : ListView.builder(
+                    itemCount: _crops.length,
+                    itemBuilder: (context, index) {
+                      final crop = _crops[index];
+                      // Safety check for nulls
+                      final bool isSold = crop['is_sold'] ?? false;
+                      final double highestBid = double.tryParse(crop['highest_bid'].toString()) ?? 0.0;
+                      
+                      // 👇 GET ORDER STATUS FROM BACKEND
+                      final String? orderStatus = crop['order_status']; 
 
-                          // 2. NEW: "VIEW BIDS" Button
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                            child: SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.gavel, color: Colors.white, size: 18),
-                                label: const Text("VIEW BIDS", style: TextStyle(color: Colors.white)),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                onPressed: () {
-                                  // Navigate to the Bids Screen
-                                  Navigator.push(
-                                    context, 
-                                    MaterialPageRoute(builder: (context) => ViewBidsScreen(
-                                      cropId: crop['id'], 
-                                      cropName: crop['name']
-                                    ))
-                                  );
-                                },
+                      // 👇 DETERMINE BADGE & STATUS TEXT LOGIC
+                      String badgeText = "";
+                      Color badgeColor = Colors.grey;
+                      String statusMessage = "";
+                      Color statusColor = Colors.orange;
+
+                      if (isSold) {
+                        if (orderStatus == 'CONFIRMED') {
+                           // Buyer has Paid
+                           badgeText = "PAID ✅";
+                           badgeColor = Colors.green;
+                           statusMessage = "📦 Ready to Ship (Check Orders Tab)";
+                           statusColor = Colors.green;
+                        } else if (orderStatus == 'DELIVERED') {
+                           // Order Complete
+                           badgeText = "SOLD";
+                           badgeColor = Colors.blueGrey;
+                           statusMessage = "✅ Order Completed";
+                           statusColor = Colors.blueGrey;
+                        } else {
+                           // Waiting for Payment
+                           badgeText = "RESERVED";
+                           badgeColor = Colors.grey;
+                           statusMessage = "⏳ Waiting for Payment";
+                           statusColor = Colors.orange;
+                        }
+                      }
+
+                      return Card(
+                        margin: const EdgeInsets.all(10),
+                        elevation: 3,
+                        // 🎨 Visual Trick: Grey out card if Sold
+                        color: isSold ? Colors.grey[50] : Colors.white,
+                        child: Column(
+                          children: [
+                            ListTile(
+                              leading: crop['image'] != null 
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.network(
+                                        "http://127.0.0.1:8000${crop['image']}", 
+                                        width: 50, 
+                                        height: 50, 
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported),
+                                      ),
+                                    )
+                                  : const Icon(Icons.agriculture, size: 40, color: Colors.green),
+                              
+                              // 👇 1. TITLE ROW WITH DYNAMIC BADGE
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      crop['name'], 
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        decoration: isSold ? TextDecoration.lineThrough : null,
+                                        color: isSold ? Colors.grey : Colors.black
+                                      )
+                                    )
+                                  ),
+                                  
+                                  // 🏷️ STATUS BADGE
+                                  if (isSold)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(4)),
+                                      child: Text(badgeText, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    )
+                                  // 🟠 OFFERS BADGE
+                                  else if (highestBid > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(4)),
+                                      child: const Text("OFFERS!", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                ],
                               ),
+                              
+                              subtitle: Text("Qty: ${crop['quantity']} kg\nHighest Bid: ₹$highestBid"),
+                              trailing: Text("₹${crop['base_price']}", style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
                             ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+
+                            // 👇 2. CONDITIONAL BUTTON / STATUS MESSAGE
+                            if (!isSold)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.gavel, color: Colors.white, size: 18),
+                                    label: const Text("VIEW BIDS", style: TextStyle(color: Colors.white)),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context, 
+                                        MaterialPageRoute(builder: (context) => ViewBidsScreen(
+                                          cropId: crop['id'], 
+                                          cropName: crop['name']
+                                        ))
+                                      );
+                                    },
+                                  ),
+                                ),
+                              )
+                            else 
+                              // Show the specific status message calculated above
+                              Padding(
+                                padding: const EdgeInsets.all(12.0),
+                                child: Text(statusMessage, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
       
       // TAB 1: INBOX SCREEN
       widget.userId != null 
           ? InboxScreen(userId: widget.userId!) 
           : const Center(child: Text("Error: No User ID")),
 
-      // TAB 2: THE PROFILE SCREEN
+      // TAB 2: ORDERS SCREEN
+      widget.userId != null 
+          ? OrdersScreen(userId: widget.userId!, isFarmer: true) 
+          : const Center(child: Text("Error: No User ID")),
+
+      // TAB 3: PROFILE SCREEN
       widget.userId != null 
           ? ProfileScreen(userId: widget.userId!) 
           : const Center(child: Text("Error: No User ID")),
     ];
 
     return Scaffold(
-      // 4. Conditional AppBar
       appBar: _selectedIndex == 0 
           ? AppBar(
               title: const Text("My Farm 🚜"),
@@ -139,10 +216,9 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
             )
           : null, 
 
-      // 5. The Active Page
       body: _pages[_selectedIndex],
 
-      // 6. Conditional Floating Action Button
+      // FAB only on Home Tab
       floatingActionButton: _selectedIndex == 0 
           ? FloatingActionButton(
               backgroundColor: Colors.green,
@@ -160,12 +236,12 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
             )
           : null,
 
-      // 7. THE BOTTOM NAVIGATION BAR
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         selectedItemColor: Colors.green,
         unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed, 
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home),
@@ -174,6 +250,10 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
           BottomNavigationBarItem(
             icon: Icon(Icons.message), 
             label: 'Chats',
+          ),
+          BottomNavigationBarItem( 
+            icon: Icon(Icons.shopping_bag), 
+            label: 'Orders',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
