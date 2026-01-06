@@ -315,4 +315,33 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<List<dynamic>> getOrders(int userId) async {
+    final response = await http.get(Uri.parse('$baseUrl/market/orders/?user_id=$userId'));
+    return response.statusCode == 200 ? jsonDecode(response.body) : [];
+  }
+
+  static Future<bool> makePayment(int orderId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/market/payment/pay/'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'order_id': orderId}),
+    );
+    return response.statusCode == 201;
+  }
+
+  // 3. Update Order Status (For Farmer to mark as Delivered)
+  static Future<bool> updateOrderStatus(int orderId, String newStatus) async {
+    final url = Uri.parse('$baseUrl/market/orders/update/$orderId/');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'status': newStatus}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
 }
