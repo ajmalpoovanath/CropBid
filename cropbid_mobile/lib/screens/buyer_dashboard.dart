@@ -4,7 +4,8 @@ import 'login_screen.dart';
 import 'profile_screen.dart'; 
 import 'chat_screen.dart'; 
 import 'inbox_screen.dart'; 
-import 'orders_screen.dart'; // <--- 1. IMPORT THIS
+import 'orders_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BuyerDashboard extends StatefulWidget {
   final int? userId; 
@@ -16,9 +17,8 @@ class BuyerDashboard extends StatefulWidget {
 }
 
 class _BuyerDashboardState extends State<BuyerDashboard> {
-  // 0 = Market, 1 = Inbox, 2 = Orders, 3 = Profile
-  int _selectedIndex = 0;
   
+  int _selectedIndex = 0;
   List<dynamic> _marketCrops = [];
   bool _isLoading = true;
 
@@ -44,11 +44,35 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
     });
   }
 
-  // 👇 2. NEW: Helper to calculate Time Left
+  // 📍 NEW: Professional Maps Launcher Logic
+  Future<void> _openMap(double lat, double lng) async {
+  // Apple Maps URL scheme (Best for iOS Simulator/iPhone)
+  final Uri appleMapsUrl = Uri.parse('maps://?q=$lat,$lng');
+  
+  // Google Maps URL scheme (Fallback)
+  final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+
+  try {
+    if (await canLaunchUrl(appleMapsUrl)) {
+      await launchUrl(appleMapsUrl);
+    } else if (await canLaunchUrl(googleMapsUrl)) {
+      await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+    } else {
+      throw 'Could not launch maps';
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
+    }
+  }
+}
+
   String _calculateTimeLeft(String? endTime) {
     if (endTime == null) return "Auction Not Started";
     final end = DateTime.parse(endTime);
-    final now = DateTime.now().toUtc(); // Use UTC to match server typically
+    final now = DateTime.now().toUtc();
     final diff = end.difference(now); 
     
     if (diff.isNegative) return "Auction Expired";
@@ -91,7 +115,6 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
               onPressed: () async {
                 final amountText = _amountController.text;
                 if (amountText.isEmpty) return;
-
                 final double offer = double.tryParse(amountText) ?? 0.0;
 
                 if (offer < basePrice) {
@@ -103,21 +126,15 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                 }
 
                 Navigator.pop(context); 
-                
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Placing Bid...")));
-
                 final success = await ApiService.placeBid(widget.userId!, cropId, amountText);
 
                 if (mounted) {
                    if (success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Bid Placed! Timer Started ⏱️")),
-                      );
-                      _loadMarketplace(); // <--- 3. REFRESH to show new Highest Bid
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bid Placed! Timer Started ⏱️")));
+                      _loadMarketplace();
                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Failed to place bid. Try again.")),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to place bid.")));
                    }
                 }
               },
@@ -132,7 +149,7 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> _pages = [
-      // TAB 0: MARKETPLACE
+      // TAB 0: MARKETPLACE (Integrated with Maps)
       _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _marketCrops.isEmpty
@@ -143,13 +160,18 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                     itemCount: _marketCrops.length,
                     itemBuilder: (context, index) {
                       final crop = _marketCrops[index];
+                      
+                      // Pull location from updated serializer
+                      final double? lat = crop['farmer_lat'] != null ? double.tryParse(crop['farmer_lat'].toString()) : null;
+                      final double? lng = crop['farmer_lng'] != null ? double.tryParse(crop['farmer_lng'].toString()) : null;
+
                       return Card(
                         margin: const EdgeInsets.all(10),
                         elevation: 4,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Image
+                            // 🖼️ Image Section
                             Container(
                               height: 150,
                               width: double.infinity,
@@ -162,7 +184,8 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                     )
                                   : const Icon(Icons.agriculture, size: 50, color: Colors.grey),
                             ),
-                            // Details
+
+                            // 📝 Details Section
                             Padding(
                               padding: const EdgeInsets.all(12.0),
                               child: Column(
@@ -171,9 +194,20 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text(
-                                        crop['name'],
-                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                      Row(
+                                        children: [
+                                          Text(
+                                            crop['name'],
+                                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                          ),
+                                          // 📍 NEW: Location Icon Button
+                                          if (lat != null && lng != null)
+                                            IconButton(
+                                              icon: const Icon(Icons.location_on, color: Colors.blue, size: 20),
+                                              tooltip: "Navigate to Farm",
+                                              onPressed: () => _openMap(lat, lng),
+                                            ),
+                                        ],
                                       ),
                                       Text(
                                         "₹${crop['base_price']}/kg",
@@ -183,12 +217,12 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                   ),
                                   const SizedBox(height: 8),
 
-                                  // 👇 4. NEW: HIGHEST BID & TIMER INFO
+                                  // Bid Info Row
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       Text(
-                                        "Highest: ₹${crop['highest_bid']}", 
+                                        "Highest: ₹${crop['highest_bid'] ?? crop['base_price']}", 
                                         style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
                                       ),
                                       Text(
@@ -197,7 +231,6 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                       ),
                                     ],
                                   ),
-                                  // Show exact time left
                                   if (crop['auction_end_time'] != null)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 4.0),
@@ -209,16 +242,14 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
 
                                   const SizedBox(height: 15),
                                   
-                                  // Two Buttons
+                                  // Action Buttons
                                   Row(
                                     children: [
                                       Expanded(
-                                        child: OutlinedButton(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.chat_bubble_outline, size: 18),
                                           onPressed: () {
-                                            if (widget.userId == null) {
-                                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please Login First")));
-                                               return;
-                                            }
+                                            if (widget.userId == null) return;
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
@@ -230,26 +261,19 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                               ),
                                             );
                                           },
-                                          child: const Text("CHAT"),
+                                          label: const Text("CHAT"),
                                         ),
                                       ),
                                       const SizedBox(width: 10),
                                       Expanded(
-                                        child: ElevatedButton(
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.gavel, size: 18, color: Colors.white),
                                           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
                                           onPressed: () {
-                                             if (widget.userId == null) {
-                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please Login First")));
-                                                return;
-                                             }
-                                             _showBidDialog(
-                                                context, 
-                                                crop['id'], 
-                                                crop['name'], 
-                                                crop['base_price'].toString()
-                                             );
+                                             if (widget.userId == null) return;
+                                             _showBidDialog(context, crop['id'], crop['name'], crop['base_price'].toString());
                                           },
-                                          child: const Text("PLACE BID", style: TextStyle(color: Colors.white)),
+                                          label: const Text("PLACE BID", style: TextStyle(color: Colors.white)),
                                         ),
                                       ),
                                     ],
@@ -264,20 +288,10 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                   ),
                 ),
 
-      // TAB 1: INBOX
-      widget.userId != null 
-          ? InboxScreen(userId: widget.userId!) 
-          : const Center(child: Text("Error: No User ID")),
-
-      // TAB 2: ORDERS (NEW)
-      widget.userId != null 
-          ? OrdersScreen(userId: widget.userId!) // <--- 5. Added OrdersScreen
-          : const Center(child: Text("Error: No User ID")),
-
-      // TAB 3: PROFILE
-      widget.userId != null 
-          ? ProfileScreen(userId: widget.userId!) 
-          : const Center(child: Text("Error: No User ID")),
+      // Other Tabs (Inbox, Orders, Profile)
+      widget.userId != null ? InboxScreen(userId: widget.userId!) : const Center(child: Text("Error: No User ID")),
+      widget.userId != null ? OrdersScreen(userId: widget.userId!) : const Center(child: Text("Error: No User ID")),
+      widget.userId != null ? ProfileScreen(userId: widget.userId!) : const Center(child: Text("Error: No User ID")),
     ];
 
     return Scaffold(
@@ -288,40 +302,23 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
               actions: [
                 IconButton(
                   icon: const Icon(Icons.logout),
-                  onPressed: () => Navigator.pushReplacement(
-                    context, 
-                    MaterialPageRoute(builder: (context) => const LoginScreen())
-                  ),
+                  onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen())),
                 ),
               ],
             )
           : null,
-      
       body: _pages[_selectedIndex],
-      
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         selectedItemColor: Colors.blue,
         unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed, // <--- 6. IMPORTANT for 4 items
+        type: BottomNavigationBarType.fixed,
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.store),
-            label: 'Market',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.message), 
-            label: 'Chats',
-          ),
-          BottomNavigationBarItem( // <--- 7. Added Orders Icon
-            icon: Icon(Icons.shopping_bag), 
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.store), label: 'Market'),
+          BottomNavigationBarItem(icon: Icon(Icons.message), label: 'Chats'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag), label: 'Orders'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],
       ),
     );

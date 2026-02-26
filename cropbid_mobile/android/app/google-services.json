@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "536277474699",
+    "project_id": "cropbid-e19f1",
+    "storage_bucket": "cropbid-e19f1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:536277474699:android:bd828d795599cb3f94638e",
+        "android_client_info": {
+          "package_name": "com.android.application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZLv07rJ6xS2bouMs-uDomw_cvliiE47c"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
