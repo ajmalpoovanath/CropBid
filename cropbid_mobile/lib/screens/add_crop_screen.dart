@@ -16,15 +16,28 @@ class _AddCropScreenState extends State<AddCropScreen> {
   final _descController = TextEditingController();
   final _priceController = TextEditingController();
   final _qtyController = TextEditingController();
-  File? _imageFile;
+  
+  // 1. Changed to a List to handle multiple photos
+  List<File> _imageFiles = []; 
   bool _isLoading = false;
 
-  Future<void> _pickImage() async {
+  // 2. Updated to pick multiple images at once
+  Future<void> _pickMultiImages() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) {
-      setState(() => _imageFile = File(picked.path));
+    final pickedList = await picker.pickMultiImage();
+    
+    if (pickedList.isNotEmpty) {
+      setState(() {
+        _imageFiles.addAll(pickedList.map((xFile) => File(xFile.path)).toList());
+      });
     }
+  }
+
+  // 3. Helper to remove a specific image if the farmer changes their mind
+  void _removeImage(int index) {
+    setState(() {
+      _imageFiles.removeAt(index);
+    });
   }
 
   void _submitCrop() async {
@@ -33,15 +46,21 @@ class _AddCropScreenState extends State<AddCropScreen> {
       return;
     }
 
+    if (_imageFiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add at least one image of your crop")));
+      return;
+    }
+
     setState(() => _isLoading = true);
 
+    // 4. Passing the list of images to the ApiService
     final result = await ApiService.addCrop(
       userId: widget.userId,
       name: _nameController.text,
       description: _descController.text,
       price: _priceController.text,
       quantity: _qtyController.text,
-      imageFile: _imageFile,
+      imageFiles: _imageFiles, // We will update ApiService to accept this List
     );
 
     setState(() => _isLoading = false);
@@ -49,7 +68,7 @@ class _AddCropScreenState extends State<AddCropScreen> {
     if (result['success']) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Crop Listed Successfully! 🌾")));
-        Navigator.pop(context, true); // Return "true" to tell Dashboard to refresh
+        Navigator.pop(context, true);
       }
     } else {
       if (mounted) {
@@ -61,29 +80,65 @@ class _AddCropScreenState extends State<AddCropScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Add New Crop"), backgroundColor: Colors.green),
+      appBar: AppBar(title: const Text("Add New Crop"), backgroundColor: Colors.green, foregroundColor: Colors.white),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image Picker
-            GestureDetector(
-              onTap: _pickImage,
-              child: Container(
-                height: 150,
-                width: double.infinity,
-                color: Colors.grey[200],
-                child: _imageFile == null
-                    ? const Icon(Icons.add_a_photo, size: 50, color: Colors.grey)
-                    : Image.file(_imageFile!, fit: BoxFit.cover),
+            const Text("Crop Images", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+
+            // 5. Professional Multi-Image Preview Row
+            SizedBox(
+              height: 120,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _imageFiles.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == _imageFiles.length) {
+                    // "Add More" Button at the end of the list
+                    return GestureDetector(
+                      onTap: _pickMultiImages,
+                      child: Container(
+                        width: 100,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+                        child: const Icon(Icons.add_a_photo, color: Colors.grey),
+                      ),
+                    );
+                  }
+                  
+                  return Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          image: DecorationImage(image: FileImage(_imageFiles[index]), fit: BoxFit.cover),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () => _removeImage(index),
+                          child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 16, color: Colors.white)),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
-            const SizedBox(height: 20),
+            
+            const SizedBox(height: 25),
             
             TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Crop Name (e.g. Potato)", border: OutlineInputBorder())),
             const SizedBox(height: 15),
             
-            TextField(controller: _descController, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
+            TextField(controller: _descController, maxLines: 3, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
             const SizedBox(height: 15),
             
             Row(
@@ -100,8 +155,8 @@ class _AddCropScreenState extends State<AddCropScreen> {
               height: 50,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _submitCrop,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("LIST CROP", style: TextStyle(color: Colors.white)),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("LIST CROP", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
