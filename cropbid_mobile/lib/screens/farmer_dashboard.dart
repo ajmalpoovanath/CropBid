@@ -17,9 +17,7 @@ class FarmerDashboard extends StatefulWidget {
 }
 
 class _FarmerDashboardState extends State<FarmerDashboard> {
-  // 0 = Home, 1 = Chats, 2 = Orders, 3 = Profile
   int _selectedIndex = 0;
-  
   List<dynamic> _crops = [];
   bool _isLoadingCrops = true;
 
@@ -41,15 +39,19 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
   }
 
   void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
+  }
+
+  // 🖼️ Helper to get the correct Image URL dynamically
+  String _getImageUrl(String? path) {
+    if (path == null || path.isEmpty) return "";
+    if (path.startsWith('http')) return path;
+    return "${ApiService.baseUrl.replaceAll('/api', '')}$path";
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> _pages = [
-      // TAB 0: THE CROP LIST (Home)
       _isLoadingCrops 
           ? const Center(child: CircularProgressIndicator()) 
           : RefreshIndicator(
@@ -60,14 +62,10 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                     itemCount: _crops.length,
                     itemBuilder: (context, index) {
                       final crop = _crops[index];
-                      // Safety check for nulls
                       final bool isSold = crop['is_sold'] ?? false;
                       final double highestBid = double.tryParse(crop['highest_bid'].toString()) ?? 0.0;
-                      
-                      // 👇 GET ORDER STATUS FROM BACKEND
                       final String? orderStatus = crop['order_status']; 
 
-                      // 👇 DETERMINE BADGE & STATUS TEXT LOGIC
                       String badgeText = "";
                       Color badgeColor = Colors.grey;
                       String statusMessage = "";
@@ -75,19 +73,16 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
 
                       if (isSold) {
                         if (orderStatus == 'CONFIRMED') {
-                           // Buyer has Paid
                            badgeText = "PAID ✅";
                            badgeColor = Colors.green;
                            statusMessage = "📦 Ready to Ship (Check Orders Tab)";
                            statusColor = Colors.green;
                         } else if (orderStatus == 'DELIVERED') {
-                           // Order Complete
                            badgeText = "SOLD";
                            badgeColor = Colors.blueGrey;
                            statusMessage = "✅ Order Completed";
                            statusColor = Colors.blueGrey;
                         } else {
-                           // Waiting for Payment
                            badgeText = "RESERVED";
                            badgeColor = Colors.grey;
                            statusMessage = "⏳ Waiting for Payment";
@@ -95,28 +90,30 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                         }
                       }
 
+                      // 🚜 REMOVED: InkWell/GestureDetector wrapper to disable clicking
                       return Card(
-                        margin: const EdgeInsets.all(10),
-                        elevation: 3,
-                        // 🎨 Visual Trick: Grey out card if Sold
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        elevation: 4,
+                        clipBehavior: Clip.antiAlias,
                         color: isSold ? Colors.grey[50] : Colors.white,
                         child: Column(
                           children: [
                             ListTile(
-                              leading: crop['image'] != null 
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        "http://127.0.0.1:8000${crop['image']}", 
-                                        width: 50, 
-                                        height: 50, 
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported),
-                                      ),
-                                    )
-                                  : const Icon(Icons.agriculture, size: 40, color: Colors.green),
-                              
-                              // 👇 1. TITLE ROW WITH DYNAMIC BADGE
+                              leading: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey[200],
+                                  child: crop['image'] != null 
+                                      ? Image.network(
+                                          _getImageUrl(crop['image']), 
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (c,e,s) => const Icon(Icons.broken_image),
+                                        )
+                                      : const Icon(Icons.agriculture, color: Colors.green),
+                                ),
+                              ),
                               title: Row(
                                 children: [
                                   Expanded(
@@ -124,20 +121,17 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                                       crop['name'], 
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
+                                        fontSize: 18,
                                         decoration: isSold ? TextDecoration.lineThrough : null,
-                                        color: isSold ? Colors.grey : Colors.black
                                       )
                                     )
                                   ),
-                                  
-                                  // 🏷️ STATUS BADGE
                                   if (isSold)
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                       decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(4)),
                                       child: Text(badgeText, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                                     )
-                                  // 🟠 OFFERS BADGE
                                   else if (highestBid > 0)
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -146,37 +140,40 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                                     ),
                                 ],
                               ),
-                              
-                              subtitle: Text("Qty: ${crop['quantity']} kg\nHighest Bid: ₹$highestBid"),
-                              trailing: Text("₹${crop['base_price']}", style: const TextStyle(color: Colors.green, fontSize: 16, fontWeight: FontWeight.bold)),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text("Total Qty: ${crop['quantity']} kg\nHighest Bid: ₹$highestBid"),
+                              ),
+                              trailing: Text("₹${crop['base_price']}", style: const TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold)),
                             ),
 
-                            // 👇 2. CONDITIONAL BUTTON / STATUS MESSAGE
                             if (!isSold)
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    icon: const Icon(Icons.gavel, color: Colors.white, size: 18),
-                                    label: const Text("VIEW BIDS", style: TextStyle(color: Colors.white)),
-                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context, 
-                                        MaterialPageRoute(builder: (context) => ViewBidsScreen(
-                                          cropId: crop['id'], 
-                                          cropName: crop['name']
-                                        ))
-                                      );
-                                    },
-                                  ),
+                                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        icon: const Icon(Icons.gavel, color: Colors.white, size: 18),
+                                        label: const Text("VIEW BIDS", style: TextStyle(color: Colors.white)),
+                                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, elevation: 0),
+                                        onPressed: () {
+                                          Navigator.push(
+                                            context, 
+                                            MaterialPageRoute(builder: (context) => ViewBidsScreen(
+                                              cropId: crop['id'], 
+                                              cropName: crop['name']
+                                            ))
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               )
                             else 
-                              // Show the specific status message calculated above
                               Padding(
-                                padding: const EdgeInsets.all(12.0),
+                                padding: const EdgeInsets.symmetric(vertical: 12.0),
                                 child: Text(statusMessage, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold)),
                               ),
                           ],
@@ -186,27 +183,19 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                   ),
           ),
       
-      // TAB 1: INBOX SCREEN
-      widget.userId != null 
-          ? InboxScreen(userId: widget.userId!) 
-          : const Center(child: Text("Error: No User ID")),
-
-      // TAB 2: ORDERS SCREEN
-      widget.userId != null 
-          ? OrdersScreen(userId: widget.userId!, isFarmer: true) 
-          : const Center(child: Text("Error: No User ID")),
-
-      // TAB 3: PROFILE SCREEN
-      widget.userId != null 
-          ? ProfileScreen(userId: widget.userId!) 
-          : const Center(child: Text("Error: No User ID")),
+      widget.userId != null ? InboxScreen(userId: widget.userId!) : const Center(child: Text("Error")),
+      widget.userId != null ? OrdersScreen(userId: widget.userId!, isFarmer: true) : const Center(child: Text("Error")),
+      widget.userId != null ? ProfileScreen(userId: widget.userId!) : const Center(child: Text("Error")),
     ];
 
     return Scaffold(
       appBar: _selectedIndex == 0 
           ? AppBar(
               title: const Text("My Farm 🚜"),
-              backgroundColor: Colors.green,
+              centerTitle: true,
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              elevation: 0,
               actions: [
                 IconButton(
                   icon: const Icon(Icons.logout),
@@ -218,7 +207,6 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
 
       body: _pages[_selectedIndex],
 
-      // FAB only on Home Tab
       floatingActionButton: _selectedIndex == 0 
           ? FloatingActionButton(
               backgroundColor: Colors.green,
@@ -229,9 +217,7 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
                     context, 
                     MaterialPageRoute(builder: (context) => AddCropScreen(userId: widget.userId!))
                   );
-                  if (result == true) {
-                    _loadCrops(); 
-                  }
+                  if (result == true) _loadCrops(); 
               },
             )
           : null,
@@ -243,22 +229,10 @@ class _FarmerDashboardState extends State<FarmerDashboard> {
         unselectedItemColor: Colors.grey,
         type: BottomNavigationBarType.fixed, 
         items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'My Farm',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.message), 
-            label: 'Chats',
-          ),
-          BottomNavigationBarItem( 
-            icon: Icon(Icons.shopping_bag), 
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.agriculture), label: 'My Farm'),
+          BottomNavigationBarItem(icon: Icon(Icons.message_outlined), label: 'Chats'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag_outlined), label: 'Orders'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     );

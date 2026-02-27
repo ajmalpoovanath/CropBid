@@ -65,7 +65,16 @@ class ApiService {
       if (fullName != null) request.fields['full_name'] = fullName;
       if (companyName != null) request.fields['company_name'] = companyName;
       if (licenseNumber != null) request.fields['license_number'] = licenseNumber;
-      if (imagePath != null) request.files.add(await http.MultipartFile.fromPath('profile_picture', imagePath));
+      
+      if (imagePath != null) {
+        // Updated to use bytes for more reliable profile picture uploads
+        File imageFile = File(imagePath);
+        request.files.add(http.MultipartFile.fromBytes(
+          'profile_picture',
+          await imageFile.readAsBytes(),
+          filename: basename(imagePath),
+        ));
+      }
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
@@ -89,25 +98,54 @@ class ApiService {
     } catch (e) { return []; }
   }
 
+  // 🔄 UPDATED: Pre-loads all images into memory as bytes before sending
   static Future<Map<String, dynamic>> addCrop({
-    required int userId, required String name, required String description,
-    required String price, required String quantity, required List<File> imageFiles,
+  required int userId, 
+  required String name, 
+  required String description,
+  required String price, 
+  required String quantity, 
+  required List<File> imageFiles,
   }) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/market/crops/'));
+      
+      // 1. Add Text Data
       request.fields.addAll({
-        'user_id': userId.toString(), 'name': name,
-        'description': description, 'base_price': price, 'quantity': quantity,
+        'user_id': userId.toString(), 
+        'name': name,
+        'description': description, 
+        'base_price': price, 
+        'quantity': quantity,
       });
 
+      // 2. Convert files to bytes IMMEDIATELY and add to request
       for (var file in imageFiles) {
-        request.files.add(await http.MultipartFile.fromPath('images', file.path, filename: basename(file.path)));
+        // We read the bytes here so the path is never used by the http client
+        List<int> bytes = await file.readAsBytes(); 
+        
+        request.files.add(http.MultipartFile.fromBytes(
+          'images', // Key for Django request.FILES.getlist('images')
+          bytes,
+          filename: basename(file.path), // Just using the name, not the full path
+        ));
       }
 
+      // 3. Send the request
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      return response.statusCode == 201 ? {"success": true} : {"success": false, "message": response.body};
-    } catch (e) { return {"success": false, "message": e.toString()}; }
+      
+      if (response.statusCode == 201) {
+        return {"success": true, "message": "Crop Added Successfully!"};
+      } else {
+        // This will help us see if the error is now coming from Django instead
+        return {"success": false, "message": response.body};
+      }
+    } catch (e) {
+      // If the 'No such file' error happens here, it means the file was gone
+      // BEFORE we could even read the bytes.
+      return {"success": false, "message": "Flutter Error: $e"};
+    }
   }
 
   // --- CHAT & INBOX ---

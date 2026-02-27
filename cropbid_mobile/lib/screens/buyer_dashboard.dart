@@ -5,7 +5,7 @@ import 'profile_screen.dart';
 import 'chat_screen.dart'; 
 import 'inbox_screen.dart'; 
 import 'orders_screen.dart';
-import 'crop_detail_screen.dart'; // 👈 IMPORT THE NEW DETAIL SCREEN
+import 'crop_detail_screen.dart'; 
 import 'package:url_launcher/url_launcher.dart';
 
 class BuyerDashboard extends StatefulWidget {
@@ -42,6 +42,14 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
     setState(() => _selectedIndex = index);
   }
 
+  // 🖼️ Helper to get the correct Image URL dynamically
+  String _getImageUrl(String? path) {
+    if (path == null) return "";
+    if (path.startsWith('http')) return path;
+    // Removes '/api' from the baseUrl to get the root server address
+    return "${ApiService.baseUrl.replaceAll('/api', '')}$path";
+  }
+
   Future<void> _openMap(double lat, double lng) async {
     final Uri appleMapsUrl = Uri.parse('maps://?q=$lat,$lng');
     final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
@@ -75,7 +83,6 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                       final double? lat = crop['farmer_lat'] != null ? double.tryParse(crop['farmer_lat'].toString()) : null;
                       final double? lng = crop['farmer_lng'] != null ? double.tryParse(crop['farmer_lng'].toString()) : null;
 
-                      // 1. Wrap the entire Card in a GestureDetector to navigate to Details
                       return GestureDetector(
                         onTap: () {
                           if (widget.userId == null) return;
@@ -91,12 +98,11 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                         },
                         child: Card(
                           margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                          elevation: 2,
+                          elevation: 3,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 🖼️ Image Section with local IP handling
                               ClipRRect(
                                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                                 child: Container(
@@ -105,7 +111,7 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                   color: Colors.grey[200],
                                   child: crop['image'] != null
                                       ? Image.network(
-                                          "http://127.0.0.1:8000${crop['image']}",
+                                          _getImageUrl(crop['image']),
                                           fit: BoxFit.cover,
                                           errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 50),
                                         )
@@ -126,10 +132,15 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                                         ),
                                         Text(
-                                          "₹${crop['base_price']}/kg",
+                                          "₹${crop['base_price']}", // 💰 Removed /kg
                                           style: const TextStyle(fontSize: 18, color: Colors.green, fontWeight: FontWeight.bold),
                                         ),
                                       ],
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      "Quantity: ${crop['quantity']} kg",
+                                      style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w500),
                                     ),
                                     const SizedBox(height: 5),
                                     Text(
@@ -140,7 +151,6 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                     ),
                                     const Divider(height: 25),
                                     
-                                    // Row for Location and Quick Chat
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
@@ -150,7 +160,7 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                                             icon: const Icon(Icons.location_on, size: 16),
                                             label: const Text("See Location"),
                                           ),
-                                        const Text("Tap to view details ➡️", style: TextStyle(color: Colors.blue, fontSize: 12)),
+                                        const Text("View Details ➡️", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
                                       ],
                                     )
                                   ],
