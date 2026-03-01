@@ -1,16 +1,20 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart'; 
+import 'package:path/path.dart';
+import 'package:flutter/foundation.dart';
 
 class ApiService {
-  // Use localhost for iOS Simulator. 
+  // Use localhost for iOS Simulator.
   // Change to your Mac's IP (e.g., 192.168.1.5) for real Android/iPhone testing.
-  static const String baseUrl = "http://localhost:8000/api";
+  static const String baseUrl = "http://192.168.1.8:8000/api";
 
   // --- AUTH & PROFILE ---
 
-  static Future<Map<String, dynamic>> login(String username, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String username,
+    String password,
+  ) async {
     final url = Uri.parse('$baseUrl/login/');
     try {
       final response = await http.post(
@@ -27,16 +31,30 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> register(String username, String password, String email, String role) async {
+  static Future<Map<String, dynamic>> register(
+    String username,
+    String password,
+    String email,
+    String role,
+  ) async {
     final url = Uri.parse('$baseUrl/register/');
     try {
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"username": username, "password": password, "email": email, "role": role}),
+        body: jsonEncode({
+          "username": username,
+          "password": password,
+          "email": email,
+          "role": role,
+        }),
       );
-      return response.statusCode == 201 ? {"success": true} : {"success": false, "message": response.body};
-    } catch (e) { return {"success": false, "message": "Error: $e"}; }
+      return response.statusCode == 201
+          ? {"success": true}
+          : {"success": false, "message": response.body};
+    } catch (e) {
+      return {"success": false, "message": "Error: $e"};
+    }
   }
 
   static Future<Map<String, dynamic>> getProfile(int userId) async {
@@ -47,39 +65,60 @@ class ApiService {
         return {"success": true, "data": jsonDecode(response.body)};
       }
       return {"success": false};
-    } catch (e) { return {"success": false}; }
+    } catch (e) {
+      return {"success": false};
+    }
   }
 
   static Future<Map<String, dynamic>> updateProfile({
-    required int userId, required String role, required String address,
-    required String phone, required double lat, required double lng,
-    String? fullName, String? companyName, String? licenseNumber, String? imagePath,
+    required int userId,
+    required String role,
+    required String address,
+    required String phone,
+    required double lat,
+    required double lng,
+    String? fullName,
+    String? companyName,
+    String? licenseNumber,
+    String? imagePath,
   }) async {
     final url = Uri.parse('$baseUrl/update_profile/');
     try {
       var request = http.MultipartRequest('POST', url);
       request.fields.addAll({
-        'user_id': userId.toString(), 'role': role, 'phone': phone,
-        'address': address, 'latitude': lat.toString(), 'longitude': lng.toString(),
+        'user_id': userId.toString(),
+        'role': role,
+        'phone': phone,
+        'address': address,
+        'latitude': lat.toString(),
+        'longitude': lng.toString(),
       });
       if (fullName != null) request.fields['full_name'] = fullName;
       if (companyName != null) request.fields['company_name'] = companyName;
-      if (licenseNumber != null) request.fields['license_number'] = licenseNumber;
-      
+      if (licenseNumber != null)
+        request.fields['license_number'] = licenseNumber;
+
       if (imagePath != null) {
-        // Updated to use bytes for more reliable profile picture uploads
         File imageFile = File(imagePath);
-        request.files.add(http.MultipartFile.fromBytes(
-          'profile_picture',
-          await imageFile.readAsBytes(),
-          filename: basename(imagePath),
-        ));
+        if (await imageFile.exists()) {
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'profile_picture',
+              await imageFile.readAsBytes(),
+              filename: basename(imagePath),
+            ),
+          );
+        }
       }
 
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      return response.statusCode == 200 ? {"success": true} : {"success": false};
-    } catch (e) { return {"success": false}; }
+      return response.statusCode == 200
+          ? {"success": true}
+          : {"success": false};
+    } catch (e) {
+      return {"success": false};
+    }
   }
 
   // --- MARKET & CROPS ---
@@ -88,62 +127,62 @@ class ApiService {
     try {
       final response = await http.get(Uri.parse('$baseUrl/market/crops/'));
       return response.statusCode == 200 ? jsonDecode(response.body) : [];
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<List<dynamic>> getMyCrops(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/market/crops/?user_id=$userId'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/market/crops/?user_id=$userId'),
+      );
       return response.statusCode == 200 ? jsonDecode(response.body) : [];
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }
 
-  // 🔄 UPDATED: Pre-loads all images into memory as bytes before sending
   static Future<Map<String, dynamic>> addCrop({
-  required int userId, 
-  required String name, 
-  required String description,
-  required String price, 
-  required String quantity, 
-  required List<File> imageFiles,
+    required int userId,
+    required String name,
+    required String description,
+    required String price,
+    required String quantity,
+    required List<File> imageFiles,
   }) async {
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/market/crops/'));
-      
-      // 1. Add Text Data
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/market/crops/'),
+      );
       request.fields.addAll({
-        'user_id': userId.toString(), 
+        'user_id': userId.toString(),
         'name': name,
-        'description': description, 
-        'base_price': price, 
+        'description': description,
+        'base_price': price,
         'quantity': quantity,
       });
 
-      // 2. Convert files to bytes IMMEDIATELY and add to request
       for (var file in imageFiles) {
-        // We read the bytes here so the path is never used by the http client
-        List<int> bytes = await file.readAsBytes(); 
-        
-        request.files.add(http.MultipartFile.fromBytes(
-          'images', // Key for Django request.FILES.getlist('images')
-          bytes,
-          filename: basename(file.path), // Just using the name, not the full path
-        ));
+        if (await file.exists()) {
+          List<int> bytes = await file.readAsBytes();
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'images',
+              bytes,
+              filename: basename(file.path),
+            ),
+          );
+        }
       }
 
-      // 3. Send the request
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
-      
-      if (response.statusCode == 201) {
-        return {"success": true, "message": "Crop Added Successfully!"};
-      } else {
-        // This will help us see if the error is now coming from Django instead
-        return {"success": false, "message": response.body};
-      }
+      return response.statusCode == 201
+          ? {"success": true, "message": "Crop Added Successfully!"}
+          : {"success": false, "message": response.body};
     } catch (e) {
-      // If the 'No such file' error happens here, it means the file was gone
-      // BEFORE we could even read the bytes.
       return {"success": false, "message": "Flutter Error: $e"};
     }
   }
@@ -152,47 +191,80 @@ class ApiService {
 
   static Future<List<dynamic>> getInbox(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/communication/inbox/?user_id=$userId'));
-      return response.statusCode == 200 ? List<dynamic>.from(jsonDecode(response.body)) : [];
-    } catch (e) { return []; }
+      final response = await http.get(
+        Uri.parse('$baseUrl/communication/inbox/?user_id=$userId'),
+      );
+      return response.statusCode == 200
+          ? List<dynamic>.from(jsonDecode(response.body))
+          : [];
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<List<dynamic>> getMessages(int userId, int otherId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/communication/chat/?user_id=$userId&other_id=$otherId'));
-      return response.statusCode == 200 ? jsonDecode(response.body) : [];
-    } catch (e) { return []; }
+      final url =
+          '$baseUrl/communication/chat/?user_id=$userId&other_id=$otherId';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      }
+    } catch (e) {
+      debugPrint("Network Error in getMessages: $e");
+    }
+    return [];
   }
 
-  static Future<bool> sendMessage(int senderId, int receiverId, String message) async {
+  static Future<bool> sendMessage(
+    int senderId,
+    int receiverId,
+    String message,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/communication/chat/'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'sender': senderId, 'receiver': receiverId, 'message': message}),
+        body: jsonEncode({
+          'sender': senderId,
+          'receiver': receiverId,
+          'message': message.trim(),
+        }),
       );
       return response.statusCode == 201;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
-  // --- BIDS, ORDERS & TOKENS ---
+  // --- BIDS, ORDERS & PAYMENTS ---
 
   static Future<bool> placeBid(int userId, int cropId, String amount) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/market/bid/place/'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'user_id': userId, 'crop_id': cropId, 'amount': amount}),
+        body: jsonEncode({
+          'user_id': userId,
+          'crop_id': cropId,
+          'amount': amount,
+        }),
       );
       return response.statusCode == 201;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   static Future<List<dynamic>> getBidsForCrop(int cropId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/market/bid/list/$cropId/'));
+      final response = await http.get(
+        Uri.parse('$baseUrl/market/bid/list/$cropId/'),
+      );
       return response.statusCode == 200 ? jsonDecode(response.body) : [];
-    } catch (e) { return []; }
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<bool> updateBidStatus(int bidId, String action) async {
@@ -200,17 +272,34 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/market/bid/update/$bidId/'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'action': action}),
+        // 🔑 THE FIX: Uppercase 'action' ensures Django recognizes 'ACCEPTED' or 'REJECTED'
+        body: jsonEncode({'action': action.toUpperCase()}),
       );
+      if (response.statusCode != 200) {
+        debugPrint(
+          "BID UPDATE ERROR: ${response.statusCode} - ${response.body}",
+        );
+      }
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      debugPrint("BID UPDATE EXCEPTION: $e");
+      return false;
+    }
   }
 
   static Future<List<dynamic>> getOrders(int userId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/market/orders/?user_id=$userId'));
-      return response.statusCode == 200 ? jsonDecode(response.body) : [];
-    } catch (e) { return []; }
+      // 📡 FIXED URL: Matches your Django 'market/urls.py'
+      final response = await http.get(
+        Uri.parse("$baseUrl/market/orders/list/?user_id=$userId"),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
   }
 
   static Future<bool> makePayment(int orderId) async {
@@ -221,7 +310,9 @@ class ApiService {
         body: jsonEncode({'order_id': orderId}),
       );
       return response.statusCode == 201;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   static Future<bool> updateOrderStatus(int orderId, String newStatus) async {
@@ -232,7 +323,9 @@ class ApiService {
         body: jsonEncode({'status': newStatus}),
       );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 
   static Future<bool> saveDeviceToken(int userId, String token) async {
@@ -243,6 +336,8 @@ class ApiService {
         body: jsonEncode({'user_id': userId, 'token': token}),
       );
       return response.statusCode == 200;
-    } catch (e) { return false; }
+    } catch (e) {
+      return false;
+    }
   }
 }

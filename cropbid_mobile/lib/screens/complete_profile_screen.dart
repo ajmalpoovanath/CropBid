@@ -4,12 +4,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart'; // 🌿 Added your theme
 import 'farmer_dashboard.dart';
 import 'buyer_dashboard.dart';
 
 class CompleteProfileScreen extends StatefulWidget {
   final int userId;
-  final String role; // 'FARMER' or 'BUYER'
+  final String role; 
 
   const CompleteProfileScreen({
     super.key, 
@@ -22,36 +23,26 @@ class CompleteProfileScreen extends StatefulWidget {
 }
 
 class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
-  // Text Controllers
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  
-  // Specific Fields
-  final _fullNameController = TextEditingController(); // For Farmer
-  final _companyController = TextEditingController();  // For Buyer
-  final _licenseController = TextEditingController();  // For Buyer
+  final _fullNameController = TextEditingController(); 
+  final _companyController = TextEditingController();  
+  final _licenseController = TextEditingController();  
 
-  // Data Holders
   File? _imageFile;
   double? _latitude;
   double? _longitude;
   bool _isLoading = false;
 
-  // 📸 Function to Pick Image
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
     if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+      setState(() => _imageFile = File(pickedFile.path));
     }
   }
 
-  // 📍 Function to Get Location
   Future<void> _getLocation() async {
-    // Check permissions
     var status = await Permission.location.request();
     if (status.isDenied) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location permission is required")));
@@ -61,14 +52,11 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     setState(() => _isLoading = true);
 
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high
-      );
-      
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
-        _addressController.text = "Lat: ${position.latitude}, Lng: ${position.longitude}"; // Auto-fill for now
+        _addressController.text = "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
         _isLoading = false;
       });
     } catch (e) {
@@ -77,10 +65,9 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
     }
   }
 
-  // 💾 Submit Form
   void _submitProfile() async {
     if (_phoneController.text.isEmpty || _addressController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill common fields")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please fill all required fields")));
       return;
     }
 
@@ -99,23 +86,19 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
       imagePath: _imageFile?.path,
     );
 
-    setState(() => _isLoading = false);
-
-    if (result['success']) {
-      if (mounted) {
-        // Navigate to the correct Dashboard
+    if (mounted) {
+      setState(() => _isLoading = false);
+      if (result['success']) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => widget.role == 'FARMER' 
-                ? const FarmerDashboard() 
-                : const BuyerDashboard(),
+                ? FarmerDashboard(userId: widget.userId) // 👈 FIX: Passing userId
+                : BuyerDashboard(userId: widget.userId), // 👈 FIX: Passing userId
           ),
         );
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'])));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to update profile")));
       }
     }
   }
@@ -123,88 +106,89 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Complete Your Profile")),
+      backgroundColor: AppTheme.backgroundForest,
+      appBar: AppBar(
+        title: const Text("Complete Your Profile", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // 1. Profile Picture Picker
+            // 📸 Profile Picture Picker
             GestureDetector(
               onTap: _pickImage,
-              child: CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.grey[200],
-                backgroundImage: _imageFile != null ? FileImage(_imageFile!) : null,
-                child: _imageFile == null 
-                    ? const Icon(Icons.camera_alt, size: 40, color: Colors.grey) 
-                    : null,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 60,
+                    backgroundColor: AppTheme.surfaceMoss,
+                    backgroundImage: _imageFile != null ? FileImage(_imageFile!) : null,
+                    child: _imageFile == null 
+                        ? const Icon(Icons.add_a_photo_outlined, size: 40, color: AppTheme.paddyGreen) 
+                        : null,
+                  ),
+                  Positioned(bottom: 0, right: 0, child: CircleAvatar(radius: 18, backgroundColor: AppTheme.paddyGreen, child: const Icon(Icons.edit, size: 18, color: Colors.white))),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            const Text("Tap to upload photo"),
-            const SizedBox(height: 30),
+            const SizedBox(height: 12),
+            const Text("Upload Professional Photo", style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 40),
 
-            // 2. Role Specific Fields
-            if (widget.role == 'FARMER') ...[
-              TextField(
-                controller: _fullNameController,
-                decoration: const InputDecoration(labelText: "Full Name", border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 15),
-            ],
-
+            // 📝 Role Specific Fields
+            if (widget.role == 'FARMER') _buildForestField(_fullNameController, "Full Name", Icons.person_outline),
             if (widget.role == 'BUYER') ...[
-              TextField(
-                controller: _companyController,
-                decoration: const InputDecoration(labelText: "Company Name", border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: _licenseController,
-                decoration: const InputDecoration(labelText: "License Number", border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 15),
+              _buildForestField(_companyController, "Company Name", Icons.business_outlined),
+              const SizedBox(height: 20),
+              _buildForestField(_licenseController, "License Number", Icons.badge_outlined),
             ],
+            const SizedBox(height: 20),
 
-            // 3. Common Fields
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder()),
-            ),
-            const SizedBox(height: 15),
+            // 📞 Common Fields
+            _buildForestField(_phoneController, "Phone Number", Icons.phone_outlined, keyboardType: TextInputType.phone),
+            const SizedBox(height: 20),
 
-            // 4. Location Picker
+            // 📍 Location Field
             Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _addressController,
-                    decoration: const InputDecoration(labelText: "Address / Location", border: OutlineInputBorder()),
-                  ),
-                ),
+                Expanded(child: _buildForestField(_addressController, "Location", Icons.location_on_outlined)),
+                const SizedBox(width: 10),
                 IconButton(
                   onPressed: _getLocation,
-                  icon: const Icon(Icons.my_location, color: Colors.blue),
+                  icon: const Icon(Icons.my_location, color: AppTheme.paddyGreen),
+                  style: IconButton.styleFrom(backgroundColor: AppTheme.surfaceMoss),
                 ),
               ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: 50),
 
-            // 5. Submit Button
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitProfile,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white) 
-                    : const Text("SAVE & CONTINUE", style: TextStyle(color: Colors.white, fontSize: 16)),
-              ),
-            ),
+            // 🔘 Submit Button
+            _isLoading 
+              ? const CircularProgressIndicator(color: AppTheme.paddyGreen)
+              : ElevatedButton(
+                  onPressed: _submitProfile,
+                  child: const Text("SAVE & CONTINUE", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildForestField(TextEditingController controller, String label, IconData icon, {TextInputType keyboardType = TextInputType.text}) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppTheme.paddyGreen),
+        prefixIcon: Icon(icon, color: Colors.white38),
+        filled: true,
+        fillColor: AppTheme.surfaceMoss,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       ),
     );
   }

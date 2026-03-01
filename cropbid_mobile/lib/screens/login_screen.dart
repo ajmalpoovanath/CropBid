@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; 
 import '../services/api_service.dart';
-import 'register_screen.dart';
-import 'complete_profile_screen.dart';
-import 'farmer_dashboard.dart';
+import '../theme/app_theme.dart';
 import 'buyer_dashboard.dart';
+import 'farmer_dashboard.dart';
+import 'registration_screen.dart';
+import 'complete_profile_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,154 +14,245 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _passController = TextEditingController();
+  bool _isLoading = false;
 
-  // 🛠️ Updated Helper function to handle the FCM Token handshake without crashing
-  Future<void> _handleFcmToken(int userId) async {
+  void _login() async {
+    if (_userController.text.isEmpty || _passController.text.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please fill all fields")));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
     try {
-      FirebaseMessaging messaging = FirebaseMessaging.instance;
+      final response = await ApiService.login(
+        _userController.text,
+        _passController.text,
+      );
+      if (mounted) setState(() => _isLoading = false);
 
-      // 👇 Bypasses the 'apns-token-not-set' error common on simulators
-      String? token = await messaging.getToken().catchError((err) {
-        print("Token fetch skipped (expected on simulator): $err");
-        return null; // Return null so the app continues
-      });
+      if (response['success'] && mounted) {
+        // 🔑 THE FIX: Extract the primary LOGIN ID (User Table ID)
+        final userData = response['data']['data'] ?? response['data'];
 
-      if (token != null) {
-        print("FCM Token: $token");
-        // Send the token to Django to associate it with this user
-        await ApiService.saveDeviceToken(userId, token);
-      } else {
-        print("No FCM token generated (Simulator mode active).");
+        // 🛡️ Robust Extraction for the Login ID (e.g., 11 or 12)
+        final dynamic rawId = userData['id'] ?? userData['user_id'];
+        final int? userId = int.tryParse(rawId?.toString() ?? "");
+        final String role = (userData['role'] ?? 'BUYER')
+            .toString()
+            .toUpperCase();
+        final bool isProfileComplete = userData['is_profile_complete'] ?? false;
+
+        // 🕵️ DEBUG: Jerry Jo MUST be ID 12. Tom MUST be ID 11.
+        debugPrint(
+          "LOGIN SUCCESS: Role=$role, LoginID=$userId, ProfileComplete=$isProfileComplete",
+        );
+
+        if (userId != null) {
+          if (!isProfileComplete) {
+            // 🚀 NEW USER: Redirect to profile setup
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    CompleteProfileScreen(userId: userId, role: role),
+              ),
+            );
+          } else {
+            // ✅ EXISTING USER: Send to correct dashboard using the LOGIN ID
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => role == 'FARMER'
+                    ? FarmerDashboard(userId: userId)
+                    : BuyerDashboard(userId: userId),
+              ),
+            );
+          }
+        }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['message'] ?? "Invalid Login ❌"),
+            backgroundColor: AppTheme.clayRed,
+          ),
+        );
       }
     } catch (e) {
-      print("Handled FCM error: $e");
+      if (mounted) setState(() => _isLoading = false);
+      debugPrint("LOGIN ERROR: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Connection Error. Check Server.")),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.agriculture, size: 80, color: Colors.green),
-              const SizedBox(height: 20),
-              const Text(
-                'CropBid Login',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.green),
-              ),
-              const SizedBox(height: 40),
-
-              TextField(
-                controller: _usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
+      backgroundColor: AppTheme.backgroundForest,
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // 🌿 Professional Header with Deep Forest Gradient
+            Container(
+              height: 320,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppTheme.paddyGreen, AppTheme.backgroundForest],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(100),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              TextField(
-                controller: _passwordController,
-                obscureText: true, 
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
-                ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.eco_rounded, size: 90, color: Colors.white),
+                  SizedBox(height: 10),
+                  Text(
+                    "CropBid",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  Text(
+                    "Kerala's Trusted Agri-Market",
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
+            ),
 
-              ElevatedButton(
-                onPressed: () async {
-                  final username = _usernameController.text;
-                  final password = _passwordController.text;
+            Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Welcome back",
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "Sign in to your account",
+                    style: TextStyle(color: Colors.white60),
+                  ),
+                  const SizedBox(height: 40),
 
-                  if (username.isEmpty || password.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Please fill in all fields")),
-                    );
-                    return;
-                  }
+                  // 👤 Username Field
+                  TextField(
+                    controller: _userController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Username",
+                      prefixIcon: Icon(
+                        Icons.person_outline,
+                        color: AppTheme.paddyGreen,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
-                  showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const Center(child: CircularProgressIndicator()),
-                  );
+                  // 🔒 Password Field
+                  TextField(
+                    controller: _passController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: "Password",
+                      prefixIcon: Icon(
+                        Icons.lock_outline,
+                        color: AppTheme.paddyGreen,
+                      ),
+                    ),
+                  ),
 
-                  final result = await ApiService.login(username, password);
-
-                  if (context.mounted) Navigator.pop(context);
-
-                  if (result['success']) {
-                    final data = result['data'];
-                    final role = data['role']; 
-                    final int userId = data['id'];
-                    final bool isProfileComplete = data['is_profile_complete'] ?? false; 
-
-                    // 👇 This now has the bypass for simulator errors
-                    await _handleFcmToken(userId);
-
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Login Successful! 🎉")),
-                      );
-
-                      if (isProfileComplete == false) {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CompleteProfileScreen(userId: userId, role: role),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Password reset link sent to email!"),
                           ),
                         );
-                      } else {
-                        if (role == 'FARMER') {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => FarmerDashboard(userId: userId)),
-                          );
-                        } else if (role == 'BUYER') {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (context) => BuyerDashboard(userId: userId)),
-                          );
-                        }
-                      }
-                    }
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(result['message']), backgroundColor: Colors.red),
-                      );
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: const Text('LOGIN', style: TextStyle(fontSize: 18, color: Colors.white)),
+                      },
+                      child: const Text(
+                        "Forgot Password?",
+                        style: TextStyle(color: AppTheme.clayRed),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  _isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: AppTheme.paddyGreen,
+                          ),
+                        )
+                      : SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: _login,
+                            child: const Text(
+                              "LOGIN",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                  const SizedBox(height: 40),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        "New here?",
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegistrationScreen(),
+                          ),
+                        ),
+                        child: const Text(
+                          "Create Account",
+                          style: TextStyle(
+                            color: AppTheme.paddyGreen,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              
-              TextButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));
-                },
-                child: const Text('New here? Create Account'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

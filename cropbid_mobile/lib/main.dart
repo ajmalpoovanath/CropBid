@@ -1,33 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'theme/app_theme.dart';
 import 'screens/login_screen.dart';
 
-void main() async {
+void main() {
+  // 1. This line is required to ensure system calls work before runApp
   WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: 'AIzaSyAa47T_ryubpWvAjYSIP5-id9-6VH69ge4',
-        appId: '1:536277474699:ios:897424f4e068ee2194638e',
-        messagingSenderId: '536277474699',
-        projectId: 'cropbid-e19f1',
-      ),
-    );
-    
-    print("Firebase connected manually! 🔥");
-
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    
-  } catch (e) {
-    print("Firebase Initialization Error: $e");
-  }
+  
+  // 2. Set the system styles HERE, before the app loads
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light, // Top icons (clock/battery) white
+    systemNavigationBarColor: Color(0xFF0B251A), // Match your Deep Forest Green
+    systemNavigationBarIconBrightness: Brightness.light, // Bottom buttons white
+  ));
 
   runApp(const CropBidApp());
 }
@@ -40,10 +26,8 @@ class CropBidApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CropBid',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-        useMaterial3: true,
-      ),
+      themeMode: ThemeMode.dark,
+      darkTheme: AppTheme.darkTheme,
       home: const LoginScreen(),
     );
   }

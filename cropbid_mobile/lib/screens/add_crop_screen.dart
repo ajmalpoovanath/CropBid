@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class AddCropScreen extends StatefulWidget {
   final int userId;
@@ -12,67 +13,75 @@ class AddCropScreen extends StatefulWidget {
 }
 
 class _AddCropScreenState extends State<AddCropScreen> {
-  final _nameController = TextEditingController();
-  final _descController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _qtyController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  final TextEditingController _priceController = TextEditingController();
+  final TextEditingController _qtyController = TextEditingController();
   
-  // 1. Changed to a List to handle multiple photos
-  List<File> _imageFiles = []; 
-  bool _isLoading = false;
+  List<File> _images = [];
+  final ImagePicker _picker = ImagePicker();
+  bool _isUploading = false;
 
-  // 2. Updated to pick multiple images at once
-  Future<void> _pickMultiImages() async {
-    final picker = ImagePicker();
-    final pickedList = await picker.pickMultiImage();
-    
-    if (pickedList.isNotEmpty) {
+  // 📸 Picking Multiple Images
+  Future<void> _pickImages() async {
+    final List<XFile> pickedFiles = await _picker.pickMultiImage();
+    if (pickedFiles.isNotEmpty) {
       setState(() {
-        _imageFiles.addAll(pickedList.map((xFile) => File(xFile.path)).toList());
+        // 🛠️ FIX: Converting XFile to a permanent File reference immediately
+        _images.addAll(pickedFiles.map((file) => File(file.path)).toList());
       });
     }
   }
 
-  // 3. Helper to remove a specific image if the farmer changes their mind
-  void _removeImage(int index) {
-    setState(() {
-      _imageFiles.removeAt(index);
-    });
-  }
-
+  // 🚀 Submitting the Crop
   void _submitCrop() async {
-    if (_nameController.text.isEmpty || _priceController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Name and Price are required")));
+    if (_nameController.text.isEmpty || _images.isEmpty || _priceController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Name, Price, and at least one Image are required 🌿"),
+          backgroundColor: AppTheme.clayRed,
+        )
+      );
       return;
     }
 
-    if (_imageFiles.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add at least one image of your crop")));
-      return;
-    }
+    setState(() => _isUploading = true);
 
-    setState(() => _isLoading = true);
+    try {
+      // 🛠️ FIX: Using the bytes-based ApiService method we updated earlier
+      final response = await ApiService.addCrop(
+        userId: widget.userId,
+        name: _nameController.text,
+        description: _descController.text,
+        price: _priceController.text,
+        quantity: _qtyController.text,
+        imageFiles: _images,
+      );
 
-    // 4. Passing the list of images to the ApiService
-    final result = await ApiService.addCrop(
-      userId: widget.userId,
-      name: _nameController.text,
-      description: _descController.text,
-      price: _priceController.text,
-      quantity: _qtyController.text,
-      imageFiles: _imageFiles, // We will update ApiService to accept this List
-    );
-
-    setState(() => _isLoading = false);
-
-    if (result['success']) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Crop Listed Successfully! 🌾")));
-        Navigator.pop(context, true);
+        setState(() => _isUploading = false);
+        if (response['success']) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Crop Listed Successfully! 🚀"), backgroundColor: AppTheme.paddyGreen)
+          );
+          Navigator.pop(context, true); 
+        } else {
+          // 🛠️ FIX: Displaying the actual backend error in a readable way
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Upload Failed: ${response['message']}"),
+              backgroundColor: AppTheme.clayRed,
+              duration: const Duration(seconds: 4),
+            )
+          );
+        }
       }
-    } else {
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Failed: ${result['message']}")));
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("System Error: $e"), backgroundColor: AppTheme.clayRed)
+        );
       }
     }
   }
@@ -80,86 +89,122 @@ class _AddCropScreenState extends State<AddCropScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Add New Crop"), backgroundColor: Colors.green, foregroundColor: Colors.white),
+      backgroundColor: AppTheme.backgroundForest,
+      appBar: AppBar(
+        title: const Text("List New Crop", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Crop Images", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-
-            // 5. Professional Multi-Image Preview Row
+            // 📸 Photo Section
+            const Text("Crop Images", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.paddyGreen)),
+            const SizedBox(height: 12),
             SizedBox(
-              height: 120,
-              child: ListView.builder(
+              height: 110,
+              child: ListView(
                 scrollDirection: Axis.horizontal,
-                itemCount: _imageFiles.length + 1,
-                itemBuilder: (context, index) {
-                  if (index == _imageFiles.length) {
-                    // "Add More" Button at the end of the list
-                    return GestureDetector(
-                      onTap: _pickMultiImages,
-                      child: Container(
-                        width: 100,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.add_a_photo, color: Colors.grey),
-                      ),
-                    );
-                  }
-                  
-                  return Stack(
+                children: [
+                  ..._images.map((file) => Stack(
                     children: [
                       Container(
+                        margin: const EdgeInsets.only(right: 12),
                         width: 100,
-                        margin: const EdgeInsets.only(right: 8),
+                        height: 100,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          image: DecorationImage(image: FileImage(_imageFiles[index]), fit: BoxFit.cover),
+                          borderRadius: BorderRadius.circular(16),
+                          image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
+                          border: Border.all(color: Colors.white10),
                         ),
                       ),
                       Positioned(
-                        top: 0,
-                        right: 8,
+                        right: 15, top: 5,
                         child: GestureDetector(
-                          onTap: () => _removeImage(index),
-                          child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 16, color: Colors.white)),
+                          onTap: () => setState(() => _images.remove(file)),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: AppTheme.clayRed, shape: BoxShape.circle),
+                            child: const Icon(Icons.close, color: Colors.white, size: 12),
+                          ),
                         ),
-                      ),
+                      )
                     ],
-                  );
-                },
+                  )),
+                  GestureDetector(
+                    onTap: _pickImages,
+                    child: Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceMoss,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.paddyGreen.withOpacity(0.3)),
+                      ),
+                      child: const Icon(Icons.add_a_photo_outlined, color: AppTheme.paddyGreen),
+                    ),
+                  ),
+                ],
               ),
             ),
-            
-            const SizedBox(height: 25),
-            
-            TextField(controller: _nameController, decoration: const InputDecoration(labelText: "Crop Name (e.g. Potato)", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            
-            TextField(controller: _descController, maxLines: 3, decoration: const InputDecoration(labelText: "Description", border: OutlineInputBorder())),
-            const SizedBox(height: 15),
-            
+
+            const SizedBox(height: 32),
+
+            // 📝 Details Section
+            const Text("Product Details", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.paddyGreen)),
+            const SizedBox(height: 16),
+            _buildForestField(_nameController, "Crop Name (e.g. Wayanad Ginger)", Icons.eco_outlined),
+            const SizedBox(height: 16),
+            _buildForestField(_descController, "Description (Harvest date, variety...)", Icons.description_outlined, maxLines: 3),
+            const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: TextField(controller: _priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Price (₹)", border: OutlineInputBorder()))),
-                const SizedBox(width: 10),
-                Expanded(child: TextField(controller: _qtyController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Qty (kg)", border: OutlineInputBorder()))),
+                Expanded(
+                  child: _buildForestField(_priceController, "Total Price", Icons.currency_rupee, keyboardType: TextInputType.number),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildForestField(_qtyController, "Qty (kg)", Icons.scale_outlined, keyboardType: TextInputType.number),
+                ),
               ],
             ),
-            const SizedBox(height: 30),
 
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _submitCrop,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("LIST CROP", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
+            const SizedBox(height: 50),
+
+            // 🔘 Submit Section
+            _isUploading
+                ? const Center(child: CircularProgressIndicator(color: AppTheme.paddyGreen))
+                : ElevatedButton.icon(
+                    onPressed: _submitCrop,
+                    icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                    label: const Text("LIST CROP FOR BIDDING", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
+            const SizedBox(height: 40),
           ],
+        ),
+      ),
+    );
+  }
+
+  // 🌲 Reusable Custom Styled Field
+  Widget _buildForestField(TextEditingController controller, String hint, IconData icon, {int maxLines = 1, TextInputType keyboardType = TextInputType.text}) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: const TextStyle(color: Colors.white38),
+        prefixIcon: Icon(icon, color: AppTheme.paddyGreen.withOpacity(0.7)),
+        filled: true,
+        fillColor: AppTheme.surfaceMoss,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
         ),
       ),
     );

@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
-import 'login_screen.dart';
-import 'profile_screen.dart'; 
-import 'chat_screen.dart'; 
-import 'inbox_screen.dart'; 
+import '../theme/app_theme.dart';
+import 'crop_detail_screen.dart';
+import 'profile_screen.dart';
+import 'inbox_screen.dart';
 import 'orders_screen.dart';
-import 'crop_detail_screen.dart'; 
-import 'package:url_launcher/url_launcher.dart';
 
 class BuyerDashboard extends StatefulWidget {
-  final int? userId; 
+  final int userId;
 
-  const BuyerDashboard({super.key, this.userId});
+  const BuyerDashboard({super.key, required this.userId});
 
   @override
   State<BuyerDashboard> createState() => _BuyerDashboardState();
@@ -19,20 +17,20 @@ class BuyerDashboard extends StatefulWidget {
 
 class _BuyerDashboardState extends State<BuyerDashboard> {
   int _selectedIndex = 0;
-  List<dynamic> _marketCrops = [];
+  List<dynamic> _crops = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadMarketplace();
+    _fetchCrops();
   }
 
-  Future<void> _loadMarketplace() async {
+  Future<void> _fetchCrops() async {
     final crops = await ApiService.getAllCrops();
     if (mounted) {
       setState(() {
-        _marketCrops = crops;
+        _crops = crops;
         _isLoading = false;
       });
     }
@@ -42,127 +40,107 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
     setState(() => _selectedIndex = index);
   }
 
-  // 🖼️ Helper to get the correct Image URL dynamically
   String _getImageUrl(String? path) {
-    if (path == null) return "";
+    if (path == null || path.isEmpty) return "";
     if (path.startsWith('http')) return path;
-    // Removes '/api' from the baseUrl to get the root server address
     return "${ApiService.baseUrl.replaceAll('/api', '')}$path";
-  }
-
-  Future<void> _openMap(double lat, double lng) async {
-    final Uri appleMapsUrl = Uri.parse('maps://?q=$lat,$lng');
-    final Uri googleMapsUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-
-    try {
-      if (await canLaunchUrl(appleMapsUrl)) {
-        await launchUrl(appleMapsUrl);
-      } else if (await canLaunchUrl(googleMapsUrl)) {
-        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final List<Widget> _pages = [
       _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _marketCrops.isEmpty
-              ? const Center(child: Text("No crops available right now."))
-              : RefreshIndicator(
-                  onRefresh: _loadMarketplace,
-                  child: ListView.builder(
-                    itemCount: _marketCrops.length,
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.paddyGreen))
+          : RefreshIndicator(
+              onRefresh: _fetchCrops,
+              color: AppTheme.paddyGreen,
+              child: _crops.isEmpty 
+                ? const Center(child: Text("No crops available in the market.", style: TextStyle(color: Colors.white70)))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _crops.length,
                     itemBuilder: (context, index) {
-                      final crop = _marketCrops[index];
-                      final double? lat = crop['farmer_lat'] != null ? double.tryParse(crop['farmer_lat'].toString()) : null;
-                      final double? lng = crop['farmer_lng'] != null ? double.tryParse(crop['farmer_lng'].toString()) : null;
-
-                      return GestureDetector(
-                        onTap: () {
-                          if (widget.userId == null) return;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => CropDetailScreen(
-                                crop: crop,
-                                userId: widget.userId!,
+                      final crop = _crops[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        color: AppTheme.surfaceMoss, // Using theme card color
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(24),
+                          // 🚀 FIX: Reliable navigation to Detail Screen
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => CropDetailScreen(
+                                  crop: crop, 
+                                  userId: widget.userId
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        child: Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            );
+                          },
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               ClipRRect(
-                                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                                 child: Container(
                                   height: 180,
                                   width: double.infinity,
-                                  color: Colors.grey[200],
+                                  color: AppTheme.backgroundForest,
                                   child: crop['image'] != null
                                       ? Image.network(
-                                          _getImageUrl(crop['image']),
+                                          _getImageUrl(crop['image']), 
                                           fit: BoxFit.cover,
-                                          errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 50),
+                                          errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 50, color: Colors.white12),
                                         )
-                                      : const Icon(Icons.agriculture, size: 50, color: Colors.grey),
+                                      : const Icon(Icons.agriculture, size: 50, color: AppTheme.paddyGreen),
                                 ),
                               ),
-
                               Padding(
-                                padding: const EdgeInsets.all(12.0),
+                                padding: const EdgeInsets.all(16),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        Text(
-                                          crop['name'],
-                                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                        Expanded(
+                                          child: Text(
+                                            crop['name'] ?? "Unknown Crop", 
+                                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)
+                                          ),
                                         ),
                                         Text(
-                                          "₹${crop['base_price']}", // 💰 Removed /kg
-                                          style: const TextStyle(fontSize: 18, color: Colors.green, fontWeight: FontWeight.bold),
+                                          "₹${crop['base_price']}", 
+                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.paddyGreen)
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 5),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      "Quantity: ${crop['quantity']} kg",
-                                      style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w500),
+                                      "Quantity: ${crop['quantity']} kg", 
+                                      style: const TextStyle(color: Colors.white70)
                                     ),
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      crop['description'] ?? "No description...",
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Colors.grey[600]),
-                                    ),
-                                    const Divider(height: 25),
-                                    
+                                    const Divider(height: 24, color: Colors.white10),
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        if (lat != null && lng != null)
-                                          TextButton.icon(
-                                            onPressed: () => _openMap(lat, lng),
-                                            icon: const Icon(Icons.location_on, size: 16),
-                                            label: const Text("See Location"),
-                                          ),
-                                        const Text("View Details ➡️", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.location_on, size: 16, color: AppTheme.clayRed),
+                                            const SizedBox(width: 4),
+                                            const Text("Kerala, India", style: TextStyle(color: AppTheme.clayRed, fontWeight: FontWeight.w600)),
+                                          ],
+                                        ),
+                                        const Row(
+                                          children: [
+                                            Text("View Details", style: TextStyle(color: AppTheme.paddyGreen, fontWeight: FontWeight.bold)),
+                                            Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.paddyGreen),
+                                          ],
+                                        ),
                                       ],
-                                    )
+                                    ),
                                   ],
                                 ),
                               ),
@@ -172,41 +150,49 @@ class _BuyerDashboardState extends State<BuyerDashboard> {
                       );
                     },
                   ),
-                ),
-      
-      widget.userId != null ? InboxScreen(userId: widget.userId!) : const Center(child: Text("Error")),
-      widget.userId != null ? OrdersScreen(userId: widget.userId!) : const Center(child: Text("Error")),
-      widget.userId != null ? ProfileScreen(userId: widget.userId!) : const Center(child: Text("Error")),
+            ),
+      InboxScreen(userId: widget.userId),
+      OrdersScreen(userId: widget.userId),
+      ProfileScreen(userId: widget.userId),
     ];
 
     return Scaffold(
+      backgroundColor: AppTheme.backgroundForest,
       appBar: _selectedIndex == 0
           ? AppBar(
-              title: const Text("Crop Marketplace"),
+              title: const Text("Marketplace", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
               centerTitle: true,
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
+              backgroundColor: Colors.transparent,
               elevation: 0,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen())),
-                ),
-              ],
             )
           : null,
       body: _pages[_selectedIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Market'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_outlined), activeIcon: Icon(Icons.chat), label: 'Chats'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_bag_outlined), activeIcon: Icon(Icons.shopping_bag), label: 'Orders'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
+      bottomNavigationBar: NavigationBar(
+        backgroundColor: AppTheme.surfaceMoss,
+        indicatorColor: AppTheme.paddyGreen.withOpacity(0.2),
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: _onItemTapped,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined, color: Colors.white70), 
+            selectedIcon: Icon(Icons.home, color: Colors.white), 
+            label: 'Home'
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline, color: Colors.white70), 
+            selectedIcon: Icon(Icons.chat_bubble, color: Colors.white), 
+            label: 'Chats'
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.shopping_bag_outlined, color: Colors.white70), 
+            selectedIcon: Icon(Icons.shopping_bag, color: Colors.white), 
+            label: 'Orders'
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline, color: Colors.white70), 
+            selectedIcon: Icon(Icons.person, color: Colors.white), 
+            label: 'Profile'
+          ),
         ],
       ),
     );

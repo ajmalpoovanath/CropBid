@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
+import 'chat_screen.dart';
 
 class CropDetailScreen extends StatefulWidget {
-  final dynamic crop; 
+  final Map<String, dynamic> crop;
   final int userId;
 
   const CropDetailScreen({super.key, required this.crop, required this.userId});
@@ -14,203 +14,387 @@ class CropDetailScreen extends StatefulWidget {
 }
 
 class _CropDetailScreenState extends State<CropDetailScreen> {
-  final TextEditingController _bidController = TextEditingController();
-  bool _isSubmitting = false;
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
 
-  // 🖼️ Helper to get the correct Image URL dynamically
   String _getImageUrl(String? path) {
     if (path == null || path.isEmpty) return "";
     if (path.startsWith('http')) return path;
-    // Cleans up the localhost/127.0.0.1 switching issues
     return "${ApiService.baseUrl.replaceAll('/api', '')}$path";
   }
 
-  // 🔍 THE FIX: Mapping the list of objects into a list of image strings
-  List<String> _getGalleryList() {
-    List<String> gallery = [];
-    
-    // 1. Add the main thumbnail first
-    if (widget.crop['image'] != null) {
-      gallery.add(_getImageUrl(widget.crop['image']));
-    }
-    
-    // 2. Loop through the 'images' list of objects and extract the 'image' string
-    if (widget.crop['images'] != null && widget.crop['images'] is List) {
-      for (var item in widget.crop['images']) {
-        if (item is Map && item.containsKey('image')) {
-          gallery.add(_getImageUrl(item['image']));
-        }
-      }
-    }
-    
-    // 3. Remove duplicates (in case thumbnail is also in gallery list)
-    return gallery.toSet().toList();
-  }
+  void _startChat() {
+    final dynamic userObj = widget.crop['user'];
+    final int? correctLoginId = int.tryParse(
+      (userObj is Map ? userObj['id'] : userObj).toString(),
+    );
 
-  void _openFullGallery(BuildContext context, List<String> images, int index) {
+    final String ownerName =
+        (userObj is Map ? userObj['username'] : null) ??
+        widget.crop['farmer_name'] ??
+        "Farmer";
+
+    if (correctLoginId == null || correctLoginId == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Error: Could not find Farmer's Login ID"),
+        ),
+      );
+      return;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => Scaffold(
-          appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, elevation: 0),
-          body: PhotoViewGallery.builder(
-            itemCount: images.length,
-            pageController: PageController(initialPage: index),
-            builder: (context, i) => PhotoViewGalleryPageOptions(
-              imageProvider: NetworkImage(images[i]),
-              minScale: PhotoViewComputedScale.contained,
-              maxScale: PhotoViewComputedScale.covered * 2,
-            ),
-            scrollPhysics: const BouncingScrollPhysics(),
-            backgroundDecoration: const BoxDecoration(color: Colors.black),
-          ),
+        settings: RouteSettings(name: '/chat/$correctLoginId'),
+        builder: (context) => ChatScreen(
+          key: ValueKey(correctLoginId),
+          userId: widget.userId,
+          otherId: correctLoginId,
+          otherName: ownerName,
         ),
       ),
     );
   }
 
-  Future<void> _placeBid() async {
-    final String amount = _bidController.text.trim();
-    if (amount.isEmpty) return;
+  void _showBidDialog() {
+    // 🛠️ Extract base price for validation
+    final double basePrice =
+        double.tryParse(widget.crop['base_price']?.toString() ?? "0.0") ?? 0.0;
+    final double highestBid =
+        double.tryParse(widget.crop['highest_bid']?.toString() ?? "0.0") ?? 0.0;
 
-    setState(() => _isSubmitting = true);
-
-    final success = await ApiService.placeBid(
-      widget.userId, 
-      widget.crop['id'], 
-      amount
+    showDialog(
+      context: context,
+      builder: (context) => _AddBidDialog(
+        basePrice: basePrice,
+        highestBid: highestBid,
+        onBidPlaced: (amount) async {
+          final success = await ApiService.placeBid(
+            widget.userId,
+            widget.crop['id'],
+            amount,
+          );
+          if (mounted) {
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  success
+                      ? "Bid Placed! 🔨"
+                      : "Bid Failed: Check Minimum Price",
+                ),
+                backgroundColor: success
+                    ? AppTheme.paddyGreen
+                    : AppTheme.clayRed,
+              ),
+            );
+          }
+        },
+      ),
     );
-
-    if (mounted) {
-      setState(() => _isSubmitting = false);
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Bid Placed Successfully! 🚀"), backgroundColor: Colors.green)
-        );
-        Navigator.pop(context, true); 
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to place bid. Try again."), backgroundColor: Colors.red)
-        );
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<String> images = _getGalleryList();
-    // Use base_price from your Serializer to avoid the null error
-    final String price = widget.crop['base_price']?.toString() ?? "0.0";
+    final crop = widget.crop;
+    List<dynamic> rawImages = [];
+    if (crop['images'] is List) {
+      rawImages = crop['images'];
+    } else if (crop['image'] != null) {
+      rawImages = [crop['image']];
+    }
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(widget.crop['name']), 
-        backgroundColor: Colors.white, 
-        foregroundColor: Colors.black,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 1. TOP GALLERY SECTION
-            SizedBox(
-              height: 350,
-              child: Stack(
+      backgroundColor: AppTheme.backgroundForest,
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 400,
+            pinned: true,
+            backgroundColor: AppTheme.backgroundForest,
+            leading: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: CircleAvatar(
+                backgroundColor: Colors.black26,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
                 children: [
-                  PageView.builder(
-                    itemCount: images.length,
-                    itemBuilder: (context, index) {
-                      return GestureDetector(
-                        onTap: () => _openFullGallery(context, images, index),
-                        child: Image.network(
-                          images[index], 
-                          fit: BoxFit.cover, 
-                          width: double.infinity,
-                          errorBuilder: (context, error, stackTrace) => 
-                            const Center(child: Icon(Icons.broken_image, size: 50)),
+                  rawImages.isEmpty
+                      ? const Center(
+                          child: Icon(
+                            Icons.agriculture,
+                            size: 100,
+                            color: AppTheme.paddyGreen,
+                          ),
+                        )
+                      : PageView.builder(
+                          controller: _pageController,
+                          itemCount: rawImages.length,
+                          onPageChanged: (index) =>
+                              setState(() => _currentPage = index),
+                          itemBuilder: (context, index) {
+                            final dynamic data = rawImages[index];
+                            final String path = data is Map
+                                ? (data['image'] ?? "")
+                                : data.toString();
+                            return Image.network(
+                              _getImageUrl(path),
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) => Container(
+                                color: AppTheme.surfaceMoss,
+                                child: const Icon(
+                                  Icons.broken_image,
+                                  size: 50,
+                                  color: Colors.white12,
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
-                  if (images.length > 1)
+                  if (rawImages.length > 1)
                     Positioned(
-                      bottom: 15, left: 0, right: 0,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-                          child: Text("Swipe to see all ${images.length} photos ↔️", 
-                            style: const TextStyle(color: Colors.white, fontSize: 10)),
-                        ),
+                      bottom: 40,
+                      left: 0,
+                      right: 0,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(rawImages.length, (index) {
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            margin: const EdgeInsets.symmetric(horizontal: 4),
+                            width: _currentPage == index ? 22 : 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: _currentPage == index
+                                  ? AppTheme.paddyGreen
+                                  : Colors.white24,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          );
+                        }),
                       ),
                     ),
                 ],
               ),
             ),
-
-            Padding(
-              padding: const EdgeInsets.all(20.0),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(widget.crop['name'], style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-                      Text("₹$price", style: const TextStyle(fontSize: 24, color: Colors.green, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  
-                  Text("Total Lot: ${widget.crop['quantity']} kg", style: const TextStyle(fontSize: 16, color: Colors.black87)),
-                  Text("Farmer: ${widget.crop['farmer_name'] ?? 'Unknown'}", style: const TextStyle(fontSize: 16, color: Colors.black87)),
-                  
-                  const Divider(height: 40),
-
-                  const Text("Description", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  Text(widget.crop['description'] ?? "No description provided.", 
-                    style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black54)),
-                  
-                  const SizedBox(height: 40),
-
-                  const Text("Place Your Bid", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
                       Expanded(
-                        child: TextField(
-                          controller: _bidController,
-                          keyboardType: TextInputType.number,
-                          decoration: InputDecoration(
-                            hintText: "Enter total amount", 
-                            prefixText: "₹ ",
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        child: Text(
+                          crop['name'] ?? "Unnamed Crop",
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: _isSubmitting ? null : _placeBid,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green, 
-                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      Text(
+                        "₹${crop['base_price']}",
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.paddyGreen,
                         ),
-                        child: _isSubmitting 
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text("BID NOW", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      )
+                      ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "${crop['quantity']} kg available",
+                    style: const TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const Divider(height: 40, color: Colors.white10),
+                  const Text(
+                    "Description",
+                    style: TextStyle(
+                      color: AppTheme.paddyGreen,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    crop['description'] ?? "No description provided.",
+                    style: const TextStyle(color: Colors.white60, height: 1.5),
+                  ),
+                  const SizedBox(height: 30),
+                  _buildBidInfo(crop),
+                  const SizedBox(height: 140),
                 ],
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+      bottomSheet: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        color: AppTheme.surfaceMoss,
+        child: SafeArea(
+          child: Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: AppTheme.backgroundForest,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.chat_bubble_outline,
+                    color: AppTheme.paddyGreen,
+                  ),
+                  onPressed: _startChat,
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: SizedBox(
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: _showBidDialog,
+                    child: const Text(
+                      "PLACE BID NOW",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildBidInfo(Map<String, dynamic> crop) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceMoss,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Highest Bid", style: TextStyle(color: Colors.white70)),
+              Text(
+                "Live Auction",
+                style: TextStyle(
+                  color: AppTheme.clayRed,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          Text(
+            "₹${crop['highest_bid'] ?? '0.0'}",
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddBidDialog extends StatefulWidget {
+  final double basePrice;
+  final double highestBid;
+  final Function(String) onBidPlaced;
+
+  const _AddBidDialog({
+    required this.basePrice,
+    required this.highestBid,
+    required this.onBidPlaced,
+  });
+
+  @override
+  State<_AddBidDialog> createState() => _AddBidDialogState();
+}
+
+class _AddBidDialogState extends State<_AddBidDialog> {
+  final _controller = TextEditingController();
+
+  void _validateAndSubmit() {
+    final double enteredAmount = double.tryParse(_controller.text) ?? 0.0;
+
+    // 🛡️ FRONTEND RESTRICTION
+    if (enteredAmount < widget.basePrice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Bid must be at least ₹${widget.basePrice}"),
+          backgroundColor: AppTheme.clayRed,
+        ),
+      );
+      return;
+    }
+
+    widget.onBidPlaced(_controller.text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppTheme.surfaceMoss,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text(
+        "Place Your Bid",
+        style: TextStyle(color: Colors.white),
+      ),
+      content: TextField(
+        controller: _controller,
+        keyboardType: TextInputType.number,
+        style: const TextStyle(color: Colors.white),
+        autofocus: true,
+        decoration: InputDecoration(
+          // 💡 Hint clearly shows the required base price
+          hintText: "Min bid: ₹${widget.basePrice}",
+          hintStyle: const TextStyle(color: Colors.white38),
+          prefixText: "₹ ",
+          prefixStyle: const TextStyle(color: AppTheme.paddyGreen),
+          filled: true,
+          fillColor: AppTheme.backgroundForest,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("CANCEL"),
+        ),
+        ElevatedButton(
+          onPressed: _validateAndSubmit, // 👈 Triggers validation logic
+          child: const Text("PLACE BID"),
+        ),
+      ],
     );
   }
 }
