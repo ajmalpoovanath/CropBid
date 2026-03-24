@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 class ApiService {
   // Use localhost for iOS Simulator.
   // Change to your Mac's IP (e.g., 192.168.1.5) for real Android/iPhone testing.
-  static const String baseUrl = "http://192.168.1.8:8000/api";
+  static const String baseUrl = "http://localhost:8000/api";
 
   // --- AUTH & PROFILE ---
 
