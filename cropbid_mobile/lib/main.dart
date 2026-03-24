@@ -1,7 +1,20 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart'; // <--- Import the new file
+import 'package:flutter/services.dart'; // Required for SystemChrome
+import 'theme/app_theme.dart';
+import 'screens/login_screen.dart';
 
 void main() {
+  // 1. This line is required to ensure system calls work before runApp
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. Set the system styles HERE, before the app loads
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light, // Top icons (clock/battery) white
+    systemNavigationBarColor: Color(0xFF0B251A), // Match your Deep Forest Green
+    systemNavigationBarIconBrightness: Brightness.light, // Bottom buttons white
+  ));
+
   runApp(const CropBidApp());
 }
 
@@ -13,11 +26,9 @@ class CropBidApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'CropBid',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-        useMaterial3: true,
-      ),
-      home: const LoginScreen(), // <--- Point to the Login Screen
+      themeMode: ThemeMode.dark,
+      darkTheme: AppTheme.darkTheme,
+      home: const LoginScreen(),
     );
   }
 }

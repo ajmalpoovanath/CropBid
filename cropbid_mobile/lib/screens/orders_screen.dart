@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class OrdersScreen extends StatefulWidget {
   final int userId;
@@ -18,165 +19,234 @@ class _OrdersScreenState extends State<OrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadOrders();
+    _fetchOrders();
   }
 
-  Future<void> _loadOrders() async {
-    final data = await ApiService.getOrders(widget.userId);
+  Future<void> _fetchOrders() async {
+    // 🛠️ THE FIX: Match the method name in your ApiService
+    final orders = await ApiService.getOrders(widget.userId);
     if (mounted) {
       setState(() {
-        _orders = data;
+        _orders = orders;
         _isLoading = false;
       });
     }
   }
 
-  // Buyer: Pay for Order
-  Future<void> _processPayment(int orderId, double amount) async {
-    bool confirm = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Payment"),
-        content: Text("Pay ₹$amount via UPI?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("PAY NOW")),
-        ],
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundForest,
+      appBar: AppBar(
+        title: const Text(
+          "Order History",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
-    ) ?? false;
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppTheme.paddyGreen),
+            )
+          : RefreshIndicator(
+              onRefresh: _fetchOrders,
+              color: AppTheme.paddyGreen,
+              child: _orders.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _orders.length,
+                      itemBuilder: (context, index) {
+                        final order = _orders[index];
+                        final status =
+                            order['status']?.toString().toUpperCase() ??
+                            'PENDING';
 
-    if (!confirm) return;
+                        // 🔑 THE FIX: Map to the correct JSON keys from Django
+                        final String cropName =
+                            order['crop_name'] ?? "Unknown Crop";
+                        final String quantity =
+                            order['crop_quantity']?.toString() ?? "0";
+                        final String amount =
+                            order['amount']?.toString() ?? "0";
+                        final String otherParty =
+                            order['other_party_name'] ?? "";
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Processing Payment...")));
-    final success = await ApiService.makePayment(orderId);
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paid Successfully! ✅")));
-      _loadOrders();
-    }
-  }
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          color: AppTheme.surfaceMoss,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      "Order #${order['id']}",
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    _buildStatusBadge(status),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  cropName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                if (otherParty.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    otherParty,
+                                    style: const TextStyle(
+                                      color: AppTheme.paddyGreen,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Quantity: $quantity kg",
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                                const Divider(
+                                  color: Colors.white10,
+                                  height: 24,
+                                ),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      "Total Amount",
+                                      style: TextStyle(color: Colors.white60),
+                                    ),
+                                    Text(
+                                      "₹$amount",
+                                      style: const TextStyle(
+                                        color: AppTheme.paddyGreen,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
 
-  // Farmer: Mark as Delivered
-  Future<void> _markAsDelivered(int orderId) async {
-    bool confirm = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Delivery"),
-        content: const Text("Mark this order as Delivered? This will move it to History."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("CONFIRM")),
-        ],
-      ),
-    ) ?? false;
-
-    if (!confirm) return;
-
-    final success = await ApiService.updateOrderStatus(orderId, 'DELIVERED');
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Order Delivered! 🚚")));
-      _loadOrders();
-    }
-  }
-
-  // Helper to build the list
-  Widget _buildOrderList(List<dynamic> orders) {
-    if (orders.isEmpty) {
-      return const Center(child: Text("No orders here.", style: TextStyle(color: Colors.grey)));
-    }
-    return ListView.builder(
-      itemCount: orders.length,
-      itemBuilder: (context, index) {
-        final order = orders[index];
-        final isPending = order['status'] == 'PENDING_PAYMENT';
-        final isPaid = order['status'] == 'CONFIRMED' || order['payment_status'] == 'PAID';
-        final isDelivered = order['status'] == 'DELIVERED';
-
-        return Card(
-          margin: const EdgeInsets.all(10),
-          elevation: 3,
-          child: Column(
-            children: [
-              ListTile(
-                leading: order['crop_image'] != null
-                    ? Image.network("http://127.0.0.1:8000${order['crop_image']}", width: 50, fit: BoxFit.cover)
-                    : const Icon(Icons.shopping_bag),
-                title: Text(order['crop_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(order['other_party_name'], style: const TextStyle(fontSize: 12)),
-                    Text("Amount: ₹${order['amount']}", style: const TextStyle(color: Colors.green)),
-                  ],
-                ),
-                trailing: Chip(
-                  label: Text(
-                    isDelivered ? "DELIVERED" : (isPaid ? "PAID" : "PENDING"),
-                    style: const TextStyle(color: Colors.white, fontSize: 10),
-                  ),
-                  backgroundColor: isDelivered ? Colors.grey : (isPaid ? Colors.green : Colors.orange),
-                ),
-              ),
-              
-              // BUTTONS
-              if (!isDelivered) 
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: widget.isFarmer
-                        ? (isPaid 
-                            ? ElevatedButton.icon(
-                                icon: const Icon(Icons.local_shipping, color: Colors.white),
-                                label: const Text("MARK AS DELIVERED", style: TextStyle(color: Colors.white)),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
-                                onPressed: () => _markAsDelivered(order['id']),
-                              )
-                            : const Text("Waiting for Buyer Payment...", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
-                        : (isPending 
-                            ? ElevatedButton.icon(
-                                icon: const Icon(Icons.payment, color: Colors.white),
-                                label: const Text("PAY NOW", style: TextStyle(color: Colors.white)),
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
-                                onPressed: () => _processPayment(order['id'], double.parse(order['amount'].toString())),
-                              )
-                            : const Text("Waiting for Delivery 🚚", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+                                // 💳 Conditional Payment Button for Buyers
+                                if (!widget.isFarmer &&
+                                    status == 'PENDING_PAYMENT')
+                                  _buildPayButton(order['id']),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // 1. Separate Orders into Active vs History
-    final activeOrders = _orders.where((o) => ['PENDING_PAYMENT', 'CONFIRMED', 'SHIPPED'].contains(o['status'])).toList();
-    final historyOrders = _orders.where((o) => ['DELIVERED', 'CANCELLED'].contains(o['status'])).toList();
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.shopping_basket_outlined,
+            size: 80,
+            color: Colors.white.withOpacity(0.1),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            "No orders found yet.",
+            style: TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("My Orders 📦"),
-          backgroundColor: widget.isFarmer ? Colors.green : Colors.indigo,
-          bottom: const TabBar(
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: "Active Orders"),
-              Tab(text: "Order History"), // <--- Older orders go here
-            ],
+  Widget _buildPayButton(int orderId) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.paddyGreen,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+          onPressed: () async {
+            // Trigger payment logic
+            final success = await ApiService.makePayment(orderId);
+            if (success && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Payment Successful! ✅"),
+                  backgroundColor: AppTheme.paddyGreen,
+                ),
+              );
+              _fetchOrders(); // Refresh list
+            }
+          },
+          child: const Text(
+            "PAY NOW",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
-        body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : TabBarView(
-                children: [
-                  _buildOrderList(activeOrders),
-                  _buildOrderList(historyOrders),
-                ],
-              ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    Color color;
+    switch (status) {
+      case 'CONFIRMED':
+      case 'PAID':
+      case 'DELIVERED':
+        color = AppTheme.paddyGreen;
+        break;
+      case 'CANCELLED':
+        color = AppTheme.clayRed;
+        break;
+      case 'PENDING_PAYMENT':
+        color = Colors.orangeAccent;
+        break;
+      default:
+        color = Colors.white38;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        status.replaceAll('_', ' '),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 10,
+        ),
       ),
     );
   }
