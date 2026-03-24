@@ -32,9 +32,9 @@ As the primary focus of this project transitioned toward **UI/UX design**, the i
 *Since the app is not currently deployed, please find the interface highlights below:*
 
 <p align="center">
-  <img src="path/to/homescreen.png" width="30%" alt="Home Screen" />
-  <img src="path/to/auction-detail.png" width="30%" alt="Auction Details" /> 
-  <img src="path/to/profile.png" width="30%" alt="User Profile" />
+  <img src="Assets/homescreen.png" width="30%" alt="Home Screen" />
+  <img src="Assets/order.png" width="30%" alt="Auction Details" /> 
+  <img src="Assets/profile.png" width="30%" alt="User Profile" />
 </p>
 
 ## 🏗 System Architecture
